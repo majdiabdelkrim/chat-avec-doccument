@@ -150,77 +150,29 @@ if uploaded_file is not None:
                     k=5
                 )
 
-                st.write("### 📚 Chunks les plus pertinents")
-
                 documents = results["documents"][0]
                 metadatas = results["metadatas"][0]
                 distances = results["distances"][0]
 
+                # =====================================
+                # PHASE 6 : GÉNÉRATION LLM
+                # =====================================
+
+                st.subheader("🤖 Réponse de l'IA")
+
+                answer = generate_answer(question, documents)
+
+                st.write(answer)
+
+                 # =====================================
+                # PHASE 7 : CITATION DES SOURCES
+                # =====================================
+
+                st.write("### 📚 Sources utilisées")
+
                 for i in range(len(documents)):
-
-                    st.markdown(
-                        f"### Chunk {i + 1}"
-                    )
-
-                    st.write(
-                        f"**Source :** "
-                        f"{metadatas[i]['source']}"
-                    )
-
-                    st.write(
-                        f"**Score :** "
-                        f"{distances[i]:.4f}"
-                    )
-
-                    st.write(
-                        documents[i]
-                    )
-
-                    st.divider()
-                
-
-                    # =====================================
-                    # PHASE 6 : GÉNÉRATION LLM
-                    # =====================================
-
-                    st.subheader("🤖 Réponse de l'IA")
-
-                    answer = generate_answer(
-                        question,
-                        documents
-                    )
-
-                    st.write(answer)
-
-
-                    # =====================================
-                    # DÉTAILS DU RETRIEVAL
-                    # =====================================
-
-                    st.write("### 📚 Chunks les plus pertinents")
-
-                    for i in range(len(documents)):
-
-                        st.markdown(
-                            f"### Chunk {i + 1}"
-                        )
-
-                        st.write(
-                            f"**Source :** "
-                            f"{metadatas[i]['source']}"
-                        )
-
-                        st.write(
-                            f"**Score :** "
-                            f"{distances[i]:.4f}"
-                        )
-
-                        st.write(
-                            documents[i]
-                        )
-
-                        st.divider()
-
+                    with st.expander(f"Source {i+1} — {metadatas[i]['source']} (score : {distances[i]:.4f})"):
+                        st.write(documents[i])
     except Exception as e:
 
         st.error(

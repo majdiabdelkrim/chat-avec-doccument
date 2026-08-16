@@ -1,7 +1,7 @@
 from sentence_transformers import SentenceTransformer
 
 
-MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+MODEL_NAME = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 
 
 model = SentenceTransformer(MODEL_NAME)
