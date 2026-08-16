@@ -1,4 +1,5 @@
 .venv/
+vectorstore/
 __pycache__/
 *.py[cod]
 .env
