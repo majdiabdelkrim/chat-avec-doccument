@@ -1,8 +1,13 @@
 import chromadb
 from chromadb.config import Settings
+import tempfile
+import os
+
+# Utilise un dossier temporaire inscriptible (fonctionne en local ET sur Streamlit Cloud)
+VECTORSTORE_PATH = os.path.join(tempfile.gettempdir(), "vectorstore")
 
 client = chromadb.PersistentClient(
-    path="./vectorstore",
+    path=VECTORSTORE_PATH,
     settings=Settings(allow_reset=True)
 )
 
@@ -23,6 +28,7 @@ def add_chunks_to_store(chunks, embeddings, filename):
         embeddings=embeddings.tolist(),
         metadatas=metadatas
     )
+
 
 def get_document_count():
     return collection.count()
