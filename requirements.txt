@@ -6,6 +6,8 @@ groq
 chromadb
 sentence-transformers
 pypdf
+PyPDF2
 python-docx
 docx2txt
 python-dotenv
+langchain-text-splitters
