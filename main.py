@@ -3,199 +3,277 @@ import streamlit as st
 from src.loaders.document_loader import extract_text
 from src.chunking.text_splitter import split_text_into_chunks
 from src.embeddings.embedding_service import create_embeddings
+
 from src.vectorstore.vector_store import (
     add_chunks_to_store,
-    get_document_count
+    get_document_count,
+    get_sources
 )
+
 from src.retrieval.retriever import search_similar_chunks
 from src.llm.groq_client import generate_answer
 
 
-# =====================================
-# CONFIGURATION STREAMLIT
-# =====================================
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
 st.set_page_config(
     page_title="DocuChat AI",
     page_icon="📚",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 
-# =====================================
+# ============================================================
+# STYLE
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    .main-title {
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 0.2rem;
+    }
+
+    .subtitle {
+        color: #6b7280;
+        font-size: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .document-card {
+        padding: 10px;
+        border-radius: 8px;
+        background-color: #f5f7fa;
+        margin-bottom: 8px;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
 # SESSION STATE
-# =====================================
+# ============================================================
 
 if "processed_files" not in st.session_state:
-    st.session_state.processed_files = set()
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-
-# =====================================
-# TITRE
-# =====================================
-
-st.title("📚 DocuChat AI")
-
-st.write(
-    "Téléversez un ou plusieurs documents (PDF, TXT, DOCX) "
-    "et posez vos questions."
-)
-
-
-# =====================================
-# UPLOAD DOCUMENTS
-# =====================================
-
-uploaded_files = st.file_uploader(
-    "Choisissez un ou plusieurs fichiers",
-    type=["pdf", "txt", "docx"],
-    accept_multiple_files=True
-)
-
-
-# =====================================
-# TRAITEMENT DES NOUVEAUX DOCUMENTS
-# =====================================
-
-if uploaded_files:
-
-    for uploaded_file in uploaded_files:
-
-        # Ne traiter que les fichiers pas encore indexés
-        if uploaded_file.name not in st.session_state.processed_files:
-
-            with st.status(
-                f"Traitement de {uploaded_file.name}...",
-                expanded=True
-            ) as status:
-
-                try:
-
-                    # =====================================
-                    # PHASE 1 : EXTRACTION
-                    # =====================================
-
-                    content = extract_text(uploaded_file)
-
-                    if not content:
-                        st.warning(
-                            f"Aucun texte extrait de "
-                            f"{uploaded_file.name}."
-                        )
-                        continue
-
-                    st.write("📖 Texte extrait")
-
-
-                    # =====================================
-                    # PHASE 2 : CHUNKING
-                    # =====================================
-
-                    chunks = split_text_into_chunks(
-                        content,
-                        chunk_size=500,
-                        chunk_overlap=100
-                    )
-
-                    st.write(
-                        f"✂️ {len(chunks)} chunks créés"
-                    )
-
-
-                    # =====================================
-                    # PHASE 3 : EMBEDDINGS
-                    # =====================================
-
-                    embeddings = create_embeddings(chunks)
-
-                    st.write(
-                        f"🧠 {len(embeddings)} embeddings générés "
-                        f"(dimension {embeddings.shape[1]})"
-                    )
-
-
-                    # =====================================
-                    # PHASE 4 : VECTOR STORE - CHROMADB
-                    # =====================================
-
-                    add_chunks_to_store(
-                        chunks,
-                        embeddings,
-                        uploaded_file.name
-                    )
-
-                    st.write(
-                        "🗄️ Ajouté à ChromaDB "
-                        f"(total : {get_document_count()} chunks)"
-                    )
-
-
-                    # Marquer ce fichier comme traité
-                    st.session_state.processed_files.add(
-                        uploaded_file.name
-                    )
-
-                    status.update(
-                        label=f"✅ {uploaded_file.name} traité",
-                        state="complete"
-                    )
-
-                except Exception as e:
-
-                    st.error(
-                        f"Erreur lors du traitement de "
-                        f"{uploaded_file.name} : {e}"
-                    )
-
-                    st.exception(e)
-
-
-# =====================================
-# LISTE DES DOCUMENTS DISPONIBLES
-# =====================================
-
-if st.session_state.processed_files:
-
-    st.success(
-        "📚 Documents disponibles : "
-        + ", ".join(st.session_state.processed_files)
+    st.session_state.processed_files = set(
+        get_sources()
     )
 
 
-# =====================================
-# HISTORIQUE DE CONVERSATION
-# =====================================
+if "messages" not in st.session_state:
+
+    st.session_state.messages = []
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+with st.sidebar:
+
+    st.markdown("## 📚 DocuChat AI")
+
+    st.caption(
+        "Chat with your own documents using AI."
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # UPLOAD
+    # --------------------------------------------------------
+
+    st.markdown("### 📄 Documents")
+
+    uploaded_files = st.file_uploader(
+        "Ajouter des documents",
+        type=["pdf", "txt", "docx"],
+        accept_multiple_files=True,
+        label_visibility="collapsed"
+    )
+
+    # --------------------------------------------------------
+    # TRAITEMENT DES DOCUMENTS
+    # --------------------------------------------------------
+
+    if uploaded_files:
+
+        for uploaded_file in uploaded_files:
+
+            if (
+                uploaded_file.name
+                not in st.session_state.processed_files
+            ):
+
+                with st.spinner(
+                    f"Indexation de {uploaded_file.name}..."
+                ):
+
+                    try:
+
+                        # ==============================
+                        # EXTRACTION
+                        # ==============================
+
+                        content = extract_text(
+                            uploaded_file
+                        )
+
+                        if not content:
+
+                            st.warning(
+                                f"Impossible de lire "
+                                f"{uploaded_file.name}"
+                            )
+
+                            continue
+
+                        # ==============================
+                        # CHUNKING
+                        # ==============================
+
+                        chunks = split_text_into_chunks(
+                            content,
+                            chunk_size=500,
+                            chunk_overlap=100
+                        )
+
+                        # ==============================
+                        # EMBEDDINGS
+                        # ==============================
+
+                        embeddings = create_embeddings(
+                            chunks
+                        )
+
+                        # ==============================
+                        # CHROMADB
+                        # ==============================
+
+                        add_chunks_to_store(
+                            chunks,
+                            embeddings,
+                            uploaded_file.name
+                        )
+
+                        st.session_state.processed_files.add(
+                            uploaded_file.name
+                        )
+
+                    except Exception as e:
+
+                        st.error(
+                            f"Erreur lors du traitement de "
+                            f"{uploaded_file.name}"
+                        )
+
+    # --------------------------------------------------------
+    # DOCUMENTS DISPONIBLES
+    # --------------------------------------------------------
+
+    st.divider()
+
+    if st.session_state.processed_files:
+
+        st.markdown("### 📚 Vos documents")
+
+        for filename in sorted(
+            st.session_state.processed_files
+        ):
+
+            st.markdown(
+                f"""
+                <div class="document-card">
+                    📄 {filename}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        st.caption(
+            f"{len(st.session_state.processed_files)} "
+            f"document(s)"
+        )
+
+    else:
+
+        st.info(
+            "Aucun document ajouté."
+        )
+
+    # --------------------------------------------------------
+    # NOUVEAU CHAT
+    # --------------------------------------------------------
+
+    st.divider()
+
+    if st.button(
+        "🗑️ Effacer la conversation",
+        use_container_width=True
+    ):
+
+        st.session_state.messages = []
+
+        st.rerun()
+
+
+# ============================================================
+# HEADER PRINCIPAL
+# ============================================================
+
+st.markdown(
+    '<div class="main-title">📚 DocuChat AI</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">'
+    'Posez des questions à vos documents avec l’IA.'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# ÉTAT VIDE
+# ============================================================
+
+if not st.session_state.processed_files:
+
+    st.info(
+        "👈 Commencez par ajouter un ou plusieurs "
+        "documents depuis la barre latérale."
+    )
+
+
+# ============================================================
+# HISTORIQUE DU CHAT
+# ============================================================
 
 for message in st.session_state.messages:
 
-    with st.chat_message(message["role"]):
+    with st.chat_message(
+        message["role"]
+    ):
 
-        st.write(message["content"])
-
-        if (
-            message["role"] == "assistant"
-            and "sources" in message
-        ):
-
-            st.write("### 📚 Sources utilisées")
-
-            for i, source in enumerate(message["sources"]):
-
-                with st.expander(
-                    f"Source {i + 1} — "
-                    f"{source['metadata']['source']} "
-                    f"(distance : {source['distance']:.4f})"
-                ):
-
-                    st.write(source["document"])
+        st.markdown(
+            message["content"]
+        )
 
 
-# =====================================
-# PHASE 5 + 6 + 7 : CHAT
-# =====================================
+# ============================================================
+# CHAT
+# ============================================================
 
 if st.session_state.processed_files:
 
@@ -205,8 +283,13 @@ if st.session_state.processed_files:
 
     if question:
 
+        # ----------------------------------------------------
+        # MESSAGE UTILISATEUR
+        # ----------------------------------------------------
+
         with st.chat_message("user"):
-            st.write(question)
+
+            st.markdown(question)
 
         st.session_state.messages.append(
             {
@@ -217,91 +300,59 @@ if st.session_state.processed_files:
 
         try:
 
-            # =====================================
-            # PHASE 5 : RETRIEVAL
-            # =====================================
+            # ------------------------------------------------
+            # RETRIEVAL
+            # ------------------------------------------------
 
             with st.spinner(
-                "🔎 Recherche des informations pertinentes..."
+                "Recherche dans vos documents..."
             ):
 
                 results = search_similar_chunks(
                     question,
-                    k=5
+                    k=60
                 )
 
-            documents = results["documents"][0]
-            metadatas = results["metadatas"][0]
-            distances = results["distances"][0]
+            documents = results[
+                "documents"
+            ][0]
 
+            # ------------------------------------------------
+            # GENERATION
+            # ------------------------------------------------
 
-            # =====================================
-            # PHASE 6 : GÉNÉRATION LLM
-            # =====================================
+            with st.spinner(
+                "Génération de la réponse..."
+            ):
 
-            with st.spinner("🤖 Génération de la réponse..."):
-
-                answer = generate_answer(question, documents)
-
-
-            # =====================================
-            # PRÉPARER LES SOURCES
-            # =====================================
-
-            sources = []
-
-            for i in range(len(documents)):
-
-                sources.append(
-                    {
-                        "document": documents[i],
-                        "metadata": metadatas[i],
-                        "distance": distances[i]
-                    }
+                answer = generate_answer(
+                    question,
+                    documents
                 )
 
+            # ------------------------------------------------
+            # MESSAGE ASSISTANT
+            # ------------------------------------------------
 
-            # =====================================
-            # AFFICHER RÉPONSE
-            # =====================================
+            with st.chat_message(
+                "assistant"
+            ):
 
-            with st.chat_message("assistant"):
+                st.markdown(answer)
 
-                st.write(answer)
-
-                st.write("### 📚 Sources utilisées")
-
-                for i, source in enumerate(sources):
-
-                    with st.expander(
-                        f"Source {i + 1} — "
-                        f"{source['metadata']['source']} "
-                        f"(distance : {source['distance']:.4f})"
-                    ):
-
-                        st.write(source["document"])
-
-
-            # =====================================
-            # SAUVEGARDER LA RÉPONSE
-            # =====================================
+            # ------------------------------------------------
+            # HISTORIQUE
+            # ------------------------------------------------
 
             st.session_state.messages.append(
                 {
                     "role": "assistant",
-                    "content": answer,
-                    "sources": sources
+                    "content": answer
                 }
             )
 
         except Exception as e:
 
-            st.error(f"Erreur lors de la recherche : {e}")
-            st.exception(e)
-
-else:
-
-    st.info(
-        "👆 Téléversez au moins un document "
-        "pour commencer la conversation."
-    )
+            st.error(
+                f"Une erreur est survenue : {e}"
+            )
